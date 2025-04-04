@@ -1,0 +1,83 @@
+# This is a special Azure Container App - YAML template file
+# It is used to deploy the application to Azure Container Apps
+#
+# For the specification of the YAML file, see:
+# https://learn.microsoft.com/azure/container-apps/azure-resource-manager-api-spec
+
+# Note: ${...} placeholders are replaced before deployment!
+
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    ${AZURE_MSI_RESOURCE_ID}: {}
+
+properties:
+  environmentId: ${AZURE_CONTAINER_APP_ENVIRONMENT_ID}
+  workloadProfileName: Consumption
+  configuration:
+    ingress:
+      external: true
+      allowInsecure: true
+      targetPort: 8000
+    registries:
+      - server: ${AZURE_CONTAINER_REGISTRY_DOMAIN}
+        identity: ${AZURE_MSI_RESOURCE_ID}
+    secrets:
+      - name: "sec-appinsights-connection-string"
+        value: ${APPLICATIONINSIGHTS_CONNECTION_STRING}
+
+  template:
+    containers:
+      - image: ${AZURE_CONTAINER_REGISTRY_DOMAIN}/my-fastapi-aca:latest
+        name: app-a
+        env:
+          - name: TARGET_B_HOST
+            value: "localhost:8001"
+          - name: TARGET_C_HOST
+            value: "localhost:8002"
+          - name: "OTEL_SERVICE_NAME"
+            value: "app-a"
+          - name: "OTEL_PYTHON_LOG_CORRELATION"
+            value: "true"
+          - name: "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED"
+            value: "true"
+          - name: "APPLICATIONINSIGHTS_CONNECTION_STRING"
+            secretRef: "sec-appinsights-connection-string"
+        # Example config for a liveness probe
+        probes:
+          - type: Liveness
+            httpGet:
+              path: "/health"
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 3
+
+
+      - image: ${AZURE_CONTAINER_REGISTRY_DOMAIN}/my-fastapi-aca:latest
+        name: app-b
+        # Must change the startup command to run on a different port
+        command: ["fastapi", "run", "main.py", "--port", "8001"]
+        env:
+          - name: "OTEL_SERVICE_NAME"
+            value: "app-b"
+          - name: "OTEL_PYTHON_LOG_CORRELATION"
+            value: "true"
+          - name: "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED"
+            value: "true"
+          - name: "APPLICATIONINSIGHTS_CONNECTION_STRING"
+            secretRef: "sec-appinsights-connection-string"
+
+
+      - image: ${AZURE_CONTAINER_REGISTRY_DOMAIN}/my-fastapi-aca:latest
+        name: app-c
+        # Must change the startup command to run on a different port
+        command: ["fastapi", "run", "main.py", "--port", "8002"]
+        env:
+          - name: "OTEL_SERVICE_NAME"
+            value: "app-c"
+          - name: "OTEL_PYTHON_LOG_CORRELATION"
+            value: "true"
+          - name: "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED"
+            value: "true"
+          - name: "APPLICATIONINSIGHTS_CONNECTION_STRING"
+            secretRef: "sec-appinsights-connection-string"
